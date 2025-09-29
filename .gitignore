@@ -1,0 +1,12 @@
+# Build
+bin/
+obj/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Secrets
+.env
