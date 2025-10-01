@@ -4,35 +4,44 @@ using BackendApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ----- DB CONNECTION (User Secrets in dev, env var in Render/Prod) -----
-var cs = builder.Configuration.GetConnectionString("Default")
-         ?? Environment.GetEnvironmentVariable("ConnectionStrings__Default")
-         ?? throw new InvalidOperationException("Database connection string not configured.");
+// --- Bind to Render's dynamic port if provided (avoids port-binding issues) ---
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
 
-// ----- EF Core MySQL -----
+// --- Connection string: prefer env var, then appsettings/User Secrets; ignore empty values ---
+string? envCs = Environment.GetEnvironmentVariable("ConnectionStrings__Default");
+string? fileCs = builder.Configuration.GetConnectionString("Default");
+
+string cs = !string.IsNullOrWhiteSpace(envCs)
+    ? envCs
+    : !string.IsNullOrWhiteSpace(fileCs)
+        ? fileCs
+        : throw new InvalidOperationException("Database connection string not configured.");
+
+// --- EF Core MySQL ---
 builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseMySql(cs, ServerVersion.AutoDetect(cs)));
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-
-// Show Swagger everywhere (helpful for school/testing)
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Redirect to HTTPS only when running locally during development
+// Use HTTPS redirection only in Development (Render terminates TLS for you)
 if (app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
 
-// --- Minimal endpoints that always return 200 ---
-// (Useful for Render health check; also a quick sanity ping)
+// --- Health endpoints (for Render health checks and quick sanity ping) ---
 app.MapGet("/", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
-// --- Auto-apply migrations; don't crash app if DB is unreachable ---
+// --- Auto-apply migrations; don't bring the app down if DB isn't reachable yet ---
 using (var scope = app.Services.CreateScope())
 {
     try
@@ -43,7 +52,7 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         app.Logger.LogError(ex, "Database migration failed at startup. Continuing so /health works.");
-        // Keep the app running so Render can pass health check while you fix DB/networking
+        // Keep the app running so Render can pass health check while you fix DB/networking.
     }
 }
 
@@ -75,7 +84,7 @@ app.MapPost("/api/appointments", async (AppDbContext db, Appointment a) =>
     return Results.Created($"/api/appointments/{a.Id}", a);
 });
 
-// Swagger UI in all environments (handy on Render)
+// Swagger everywhere (handy for school/testing and on Render)
 app.UseSwagger();
 app.UseSwaggerUI();
 
