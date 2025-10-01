@@ -1,13 +1,70 @@
+﻿using Microsoft.EntityFrameworkCore;
+using BackendApi.Data;
+using BackendApi.Models;
+
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// ---- DB CONNECTION (reads from User Secrets in dev, or env var in Render) ----
+var cs = builder.Configuration.GetConnectionString("Default")
+         ?? Environment.GetEnvironmentVariable("ConnectionStrings__Default")
+         ?? throw new InvalidOperationException("Database connection string not configured.");
 
+// ---- EF Core MySQL ----
+builder.Services.AddDbContext<AppDbContext>(opt =>
+    opt.UseMySql(cs, ServerVersion.AutoDetect(cs)));     // ✅ add
+
+// Add services to the container.
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+// OPTIONAL: auto-apply migrations on startup (safe to keep)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();                                 // ✅ applies pending migrations
+}
+
+
+
+
+// List all patients
+app.MapGet("/api/patients", async (AppDbContext db) =>
+    await db.Patients.AsNoTracking().ToListAsync());
+
+// Create a patient
+app.MapPost("/api/patients", async (AppDbContext db, Patient p) =>
+{
+    db.Patients.Add(p);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/patients/{p.Id}", p);
+});
+
+
+
+// Create appointment with simple conflict check per doctor
+app.MapPost("/api/appointments", async (AppDbContext db, Appointment a) =>
+{
+    // end time for the new appointment
+    var end = a.StartsAt.AddMinutes(a.DurationMinutes);
+
+    // conflict = same doctor, any overlap
+    var conflict = await db.Appointments.AnyAsync(x =>
+        x.DoctorId == a.DoctorId &&
+        x.StartsAt < end &&
+        a.StartsAt < x.StartsAt.AddMinutes(x.DurationMinutes));
+
+    if (conflict) return Results.BadRequest("Time conflict for this doctor.");
+
+    db.Appointments.Add(a);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/appointments/{a.Id}", a);
+});
+
+
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -16,10 +73,16 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
-
+//app.UseHttpsRedirection();
+if (app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Simple health endpoint for Render
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }));  // ✅ add
 
 app.Run();
