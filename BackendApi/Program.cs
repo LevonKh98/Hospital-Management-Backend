@@ -24,9 +24,18 @@ var app = builder.Build();
 // OPTIONAL: auto-apply migrations on startup (safe to keep)
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();                                 // ✅ applies pending migrations
+    try
+    {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Database.Migrate();  // applies pending migrations
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Database migration failed at startup.");
+        // Keep running so /health works while you fix DB networking
+    }
 }
+
 
 
 
