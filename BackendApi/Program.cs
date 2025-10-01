@@ -12,7 +12,7 @@ if (!string.IsNullOrWhiteSpace(port))
 }
 
 // --- Connection string: prefer env var, then appsettings/User Secrets; ignore empty values ---
-string? envCs = Environment.GetEnvironmentVariable("ConnectionStrings__Default");
+string? envCs  = Environment.GetEnvironmentVariable("ConnectionStrings__Default");
 string? fileCs = builder.Configuration.GetConnectionString("Default");
 
 string cs = !string.IsNullOrWhiteSpace(envCs)
@@ -38,7 +38,7 @@ if (app.Environment.IsDevelopment())
 }
 
 // --- Health endpoints (for Render health checks and quick sanity ping) ---
-app.MapGet("/", () => Results.Ok(new { status = "ok" }));
+app.MapGet("/",       () => Results.Ok(new { status = "ok" }));
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 // --- Auto-apply migrations; don't bring the app down if DB isn't reachable yet ---
