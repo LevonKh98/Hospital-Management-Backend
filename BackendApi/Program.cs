@@ -1,6 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using BackendApi.Data;
 using BackendApi.Models;
+using BackendApi.Services; // <-- for AppointmentRules
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -69,20 +71,34 @@ app.MapPost("/api/patients", async (AppDbContext db, Patient p) =>
 
 app.MapPost("/api/appointments", async (AppDbContext db, Appointment a) =>
 {
+    // 1) Business-hours + weekday validation in Los Angeles
+    //    Set isUtc: true ONLY if your client sends UTC timestamps.
+    var (ok, error) = AppointmentRules.ValidateBusinessWindow(a.StartsAt, a.DurationMinutes, isUtc: false);
+    if (!ok) return Results.BadRequest(error);
+
+    // 2) Overlap rule for the same doctor
+    var newStart = a.StartsAt;
     var newEnd = a.StartsAt.AddMinutes(a.DurationMinutes);
 
-    var conflict = await db.Appointments.AnyAsync(x =>
-        x.DoctorId == a.DoctorId &&
-        x.StartsAt < newEnd &&
-        a.StartsAt < x.StartsAt.AddMinutes(x.DurationMinutes));
+    var overlapExists = await db.Appointments
+        .Where(x => x.DoctorId == a.DoctorId)
+        .AnyAsync(x =>
+            x.StartsAt < newEnd &&
+            x.StartsAt.AddMinutes(x.DurationMinutes) > newStart);
 
-    if (conflict)
+    if (overlapExists)
         return Results.BadRequest("Time conflict for this doctor.");
+
+    // 3) Persist (default Status if not set)
+    if (string.IsNullOrWhiteSpace(a.Status))
+        a.Status = "Scheduled";
 
     db.Appointments.Add(a);
     await db.SaveChangesAsync();
+
     return Results.Created($"/api/appointments/{a.Id}", a);
 });
+
 
 // Swagger everywhere (handy for school/testing and on Render)
 app.UseSwagger();

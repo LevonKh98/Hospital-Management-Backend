@@ -1,15 +1,16 @@
-namespace BackendApi.Models;
-
-public class Appointment
+namespace BackendApi.Models
 {
-    public int Id { get; set; }
-    public DateTime StartsAt { get; set; }
-    public int DurationMinutes { get; set; } = 30;
-    public string Reason { get; set; } = string.Empty;
+    public class Appointment
+    {
+        public int Id { get; set; }                 // PK
+        public int PatientId { get; set; }          // FK -> Patients.Id
+        public int DoctorId { get; set; }           // FK -> Users.UserId (Role=Doctor)
+        public DateTime StartsAt { get; set; }      // store UTC
+        public int DurationMinutes { get; set; }    // flexible per appt
+        public string? Reason { get; set; }
 
-    public int PatientId { get; set; }
-    public Patient? Patient { get; set; }
-
-    // Simple for now; we’ll add a Doctor table later
-    public int DoctorId { get; set; }
+        // NEW (you asked to add this)
+        // Allowed values you validate in code: "Scheduled" | "Completed" | "Cancelled" | "NoShow"
+        public string Status { get; set; } = "Scheduled";
+    }
 }
