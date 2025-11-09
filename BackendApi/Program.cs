@@ -9,14 +9,14 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ----- Render dynamic port -----
+// ----- Render dynamic port (Render sets PORT) -----
 var port = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrWhiteSpace(port))
 {
     builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 }
 
-// ----- Connection string (env -> appsettings) -----
+// ----- Connection string (prefer env, fallback to appsettings) -----
 string? envCs = Environment.GetEnvironmentVariable("ConnectionStrings__Default");
 string? fileCs = builder.Configuration.GetConnectionString("Default");
 string cs = !string.IsNullOrWhiteSpace(envCs)
@@ -28,15 +28,16 @@ string cs = !string.IsNullOrWhiteSpace(envCs)
 builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseMySql(cs, ServerVersion.AutoDetect(cs)));
 
-// controllers
+// ----- Controllers -----
 builder.Services.AddControllers();
 
-// swagger
+// ----- Swagger (always enabled for this class project) -----
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "BackendApi", Version = "v1" });
 
+    // JWT auth button in Swagger
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -55,7 +56,7 @@ builder.Services.AddSwaggerGen(c =>
                 Reference = new OpenApiReference
                 {
                     Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
+                    Id   = "Bearer"
                 }
             },
             Array.Empty<string>()
@@ -63,12 +64,15 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// password hasher
+// ----- Password hasher -----
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 
-// JWT
+// ----- JWT Auth (reads Jwt:* from configuration/env) -----
 var jwtSection = builder.Configuration.GetSection("Jwt");
-var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSection["SigningKey"]!));
+var issuer = jwtSection["Issuer"] ?? throw new InvalidOperationException("Jwt:Issuer not configured.");
+var audience = jwtSection["Audience"] ?? throw new InvalidOperationException("Jwt:Audience not configured.");
+var signingKeyS = jwtSection["SigningKey"] ?? throw new InvalidOperationException("Jwt:SigningKey not configured.");
+var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKeyS));
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -79,14 +83,26 @@ builder.Services
             ValidateIssuer = true,
             ValidateAudience = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtSection["Issuer"],
-            ValidAudience = jwtSection["Audience"],
+            ValidIssuer = issuer,
+            ValidAudience = audience,
             IssuerSigningKey = signingKey,
             ClockSkew = TimeSpan.Zero
         };
     });
 
-// policies
+// ----- CORS (reads Cors:AllowedOrigins or uses sensible localhost defaults) -----
+var allowedOrigins = builder.Configuration
+    .GetValue<string>("Cors:AllowedOrigins")?
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    ?? new[] { "http://localhost:5173", "http://localhost:19006", "http://localhost:3000" };
+
+builder.Services.AddCors(o => o.AddPolicy("AllowApp", p =>
+    p.WithOrigins(allowedOrigins)
+     .AllowAnyHeader()
+     .AllowAnyMethod()
+));
+
+// ----- Authorization policies -----
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AdminOnly", p => p.RequireRole("Admin"));
@@ -96,7 +112,7 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 
-// auto-migrate
+// ----- Auto-apply EF migrations (helpful on Render) -----
 using (var scope = app.Services.CreateScope())
 {
     try
@@ -110,18 +126,21 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-// health endpoints
+// ----- Health endpoints -----
 app.MapGet("/", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
+// ----- HTTPS redirect only in Development (keeps Render happy) -----
 if (app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
 
+// ----- Middleware order -----
 app.UseSwagger();
 app.UseSwaggerUI();
 
+app.UseCors("AllowApp");      // CORS must be before auth for preflight
 app.UseAuthentication();
 app.UseAuthorization();
 
