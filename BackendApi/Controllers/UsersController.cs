@@ -10,6 +10,7 @@ namespace BackendApi.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]   // -> /api/users
+    [Authorize(Roles = "Admin")]
     public class UsersController : ControllerBase
     {
         private readonly AppDbContext _db;
@@ -25,7 +26,6 @@ namespace BackendApi.Controllers
         // 1) GET /api/users  (Admin only) - list all users
         // =========================================================
         [HttpGet]
-        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> GetAll()
         {
             var users = await _db.Users
@@ -46,7 +46,6 @@ namespace BackendApi.Controllers
         // 2) GET /api/users/{id}  (Admin only) - single user
         // =========================================================
         [HttpGet("{id:int}")]
-        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> GetById(int id)
         {
             var user = await _db.Users.FindAsync(id);
@@ -71,7 +70,6 @@ namespace BackendApi.Controllers
         // 3) POST /api/users  (Admin only) - create new user
         // =========================================================
         [HttpPost]
-        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> Create([FromBody] CreateUserRequest req)
         {
             if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
@@ -126,7 +124,6 @@ namespace BackendApi.Controllers
         //     - can ALSO reset password if provided
         // =========================================================
         [HttpPut("{id:int}")]
-        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> Update(int id, [FromBody] UpdateUserRequest req)
         {
             var user = await _db.Users.FindAsync(id);
@@ -190,7 +187,6 @@ namespace BackendApi.Controllers
         //     - after this, login won't work because login checks IsActive
         // =========================================================
         [HttpPatch("{id:int}/deactivate")]
-        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> Deactivate(int id)
         {
             var user = await _db.Users.FindAsync(id);

@@ -9,8 +9,6 @@ namespace BackendApi.Data
 
         public DbSet<Patient> Patients => Set<Patient>();
         public DbSet<Appointment> Appointments => Set<Appointment>();
-
-        // NEW
         public DbSet<User> Users => Set<User>();
         public DbSet<PatientNote> PatientNotes => Set<PatientNote>();
 
@@ -27,6 +25,7 @@ namespace BackendApi.Data
                 e.Property(x => x.Username).IsRequired();
                 e.Property(x => x.PasswordHash).IsRequired();
                 e.Property(x => x.Role).IsRequired();
+                e.Property(x => x.IsActive).HasDefaultValue(true);
 
                 // Unique constraints
                 e.HasIndex(x => x.Email).IsUnique();
@@ -40,7 +39,7 @@ namespace BackendApi.Data
                 e.Property(x => x.FirstName).IsRequired();
                 e.Property(x => x.LastName).IsRequired();
                 e.Property(x => x.DateOfBirth).IsRequired();
-                // Email and Address are nullable by design
+                // Email, Address, Phone are nullable by design
 
                 // Helpful name search (optional)
                 e.HasIndex(x => x.LastName);
@@ -52,19 +51,20 @@ namespace BackendApi.Data
                 e.HasKey(x => x.Id);
 
                 // FK: Appointment.PatientId -> Patients.Id (Restrict)
-                e.HasOne<Patient>()
-                 .WithMany()
+                e.HasOne(x => x.Patient)
+                 .WithMany(p => p.Appointments)
                  .HasForeignKey(x => x.PatientId)
                  .OnDelete(DeleteBehavior.Restrict);
 
-                // FK: Appointment.DoctorId -> Users.UserId (Restrict)
-                e.HasOne<User>()
-                 .WithMany()
-                 .HasForeignKey(x => x.DoctorId)
+                // FK: Appointment.StaffUserId -> Users.UserId (Restrict)
+                // (Doctor / Nurse / Receptionist – whoever handles the appt)
+                e.HasOne(x => x.StaffUser)
+                 .WithMany() // no collection on User (keeps User clean)
+                 .HasForeignKey(x => x.StaffUserId)
                  .OnDelete(DeleteBehavior.Restrict);
 
                 // Indexes for performance
-                e.HasIndex(x => new { x.DoctorId, x.StartsAt });
+                e.HasIndex(x => new { x.StaffUserId, x.StartsAt });
                 e.HasIndex(x => new { x.PatientId, x.StartsAt });
 
                 // Status required with default "Scheduled"
@@ -78,20 +78,25 @@ namespace BackendApi.Data
             {
                 e.HasKey(x => x.NoteId);
 
-                // FK: Note.PatientId -> Patients.Id (Restrict)
-                e.HasOne<Patient>(x => x.Patient!)
-                 .WithMany()
-                 .HasForeignKey(x => x.PatientId)
-                 .OnDelete(DeleteBehavior.Restrict);
+                e.Property(x => x.Text).IsRequired();
+                e.Property(x => x.CreatedAt).IsRequired();
 
-                // FK: Note.DoctorId -> Users.UserId (Restrict)
-                e.HasOne<User>(x => x.Doctor!)
+                // FK: Note.PatientId -> Patients.Id (Restrict)
+                e.HasOne(x => x.Patient)
+                 .WithMany(p => p.Notes)
+                 .HasForeignKey(x => x.PatientId)
+                 .OnDelete(DeleteBehavior.Cascade);
+
+
+                // FK: Note.AuthorUserId -> Users.UserId (Restrict)
+                // (Doctor/Nurse/Receptionist who wrote the note)
+                e.HasOne(x => x.AuthorUser)
                  .WithMany()
-                 .HasForeignKey(x => x.DoctorId)
+                 .HasForeignKey(x => x.AuthorUserId)
                  .OnDelete(DeleteBehavior.Restrict);
 
                 // FK: Note.AppointmentId -> Appointments.Id (SetNull)
-                e.HasOne<Appointment>(x => x.Appointment!)
+                e.HasOne(x => x.Appointment)
                  .WithMany()
                  .HasForeignKey(x => x.AppointmentId)
                  .OnDelete(DeleteBehavior.SetNull);

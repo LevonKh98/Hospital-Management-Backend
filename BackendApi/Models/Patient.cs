@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace BackendApi.Models
 {
     public class Patient
@@ -8,8 +11,11 @@ namespace BackendApi.Models
         public DateTime DateOfBirth { get; set; }
         public string? Phone { get; set; }
 
-        // NEW (you asked to add these)
         public string? Email { get; set; }
         public string? Address { get; set; }
+
+        // Relationships
+        public ICollection<Appointment> Appointments { get; set; } = new List<Appointment>();
+        public ICollection<PatientNote> Notes { get; set; } = new List<PatientNote>();
     }
 }
